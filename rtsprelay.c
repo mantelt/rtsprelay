@@ -10,13 +10,10 @@
 #define DEFAULT_RTSP_PORT "8554"
 
 /* order matters here. first stream must be H264, second MP4A-LATM */
-#define RECORD_BIN "( rtph264depay name=depay0 ! fakesink " \
-                   "  rtpmp4adepay name=depay1 ! fakesink )"
+#define RECORD_BIN "( rtph264depay name=depay0 ! fakesink )"
 
 #define PLAY_BIN "( appsrc name=video_src is-live=1 do-timestamp=1 ! " \
-                 "  h264parse ! rtph264pay pt=96 config-interval=5 name=pay0 " \
-                 "  appsrc name=audio_src is-live=1 do-timestamp=1 ! " \
-                 "  aacparse ! rtpmp4apay pt=97 name=pay1 )"
+                 "  h264parse ! rtph264pay pt=96 config-interval=5 name=pay0 )"
 
 static char *port = (char *) DEFAULT_RTSP_PORT;
 
@@ -37,9 +34,7 @@ typedef struct RelayInstance {
 	gchar *play_path;
 	gchar *record_path;
 	GstElement *video_src;
-	GstElement *audio_src;
 	int video_buffers;
-	int audio_buffers;
 	int ref_count;
 } RelayInstance;
 
@@ -53,9 +48,6 @@ static void relay_instance_free(void *data)
 		printf("relay_instance_free\n");
 		if (ri->video_src) {
 			gst_object_unref(ri->video_src);
-		}
-		if (ri->audio_src) {
-			gst_object_unref(ri->audio_src);
 		}
 		mounts = gst_rtsp_server_get_mount_points(ri->relay->server);
 		gst_rtsp_mount_points_remove_factory(mounts, ri->record_path);
@@ -114,29 +106,6 @@ static GstPadProbeReturn cb_have_video(GstPad *pad, GstPadProbeInfo *info, gpoin
 	return GST_PAD_PROBE_OK;
 }
 
-static GstPadProbeReturn cb_have_audio(GstPad *pad, GstPadProbeInfo *info, gpointer data)
-{
-	RelayInstance *ri = (RelayInstance *)data;
-	GstBuffer *buffer;
-	GstCaps *caps;
-
-	/* update play sink caps based on record sink */
-	if (ri->audio_src) {
-		if (ri->audio_buffers == 0) {
-			caps = gst_pad_get_current_caps(pad);
-			gchar *capstr = gst_caps_to_string(caps);
-			printf("audio: %s\n", capstr);
-			g_free(capstr);
-			g_object_set(G_OBJECT(ri->audio_src), "caps",
-				     gst_caps_copy(caps), NULL);
-			gst_caps_unref(caps);
-		}
-		buffer = GST_PAD_PROBE_INFO_BUFFER(info);
-		push_buffer(ri->audio_src, buffer);
-		ri->audio_buffers++;
-	}
-	return GST_PAD_PROBE_OK;
-}
 
 static void record_media_configure(GstRTSPMediaFactory *factory, GstRTSPMedia *media, gpointer data)
 {
@@ -150,13 +119,6 @@ static void record_media_configure(GstRTSPMediaFactory *factory, GstRTSPMedia *m
 	pad = gst_element_get_static_pad(element, "src");
 	gst_pad_add_probe(pad, GST_PAD_PROBE_TYPE_BUFFER,
                           (GstPadProbeCallback)cb_have_video, ri, NULL);
-	gst_object_unref(pad);
-	gst_object_unref(element);
-
-	element = gst_bin_get_by_name_recurse_up(GST_BIN(bin), "depay1");
-	pad = gst_element_get_static_pad(element, "src");
-	gst_pad_add_probe(pad, GST_PAD_PROBE_TYPE_BUFFER,
-                          (GstPadProbeCallback)cb_have_audio, ri, NULL);
 	gst_object_unref(pad);
 	gst_object_unref(element);
 
@@ -174,9 +136,7 @@ static void play_media_configure(GstRTSPMediaFactory *factory, GstRTSPMedia *med
 	/* we have reusable media so only set this first time */
 	if (!ri->video_src) {
 		ri->video_src = gst_bin_get_by_name_recurse_up(GST_BIN(bin), "video_src");
-		ri->audio_src = gst_bin_get_by_name_recurse_up(GST_BIN(bin), "audio_src");
 		gst_util_set_object_arg(G_OBJECT(ri->video_src), "format", "time");
-		gst_util_set_object_arg(G_OBJECT(ri->audio_src), "format", "time");
 	}
 	gst_object_unref(bin);
 }
