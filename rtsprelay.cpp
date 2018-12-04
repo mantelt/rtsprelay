@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <iostream>
 
 #include <glib.h>
 #include <glib-unix.h>
@@ -36,6 +37,7 @@ typedef struct RelayInstance {
 	GstElement *video_src;
 	int video_buffers;
 	int ref_count;
+	GstElement *payloader;
 } RelayInstance;
 
 
@@ -116,6 +118,7 @@ static void record_media_configure(GstRTSPMediaFactory *factory, GstRTSPMedia *m
 	bin = gst_rtsp_media_get_element(media);
 
 	element = gst_bin_get_by_name_recurse_up(GST_BIN(bin), "depay0");
+	ri->payloader = element;
 	pad = gst_element_get_static_pad(element, "src");
 	gst_pad_add_probe(pad, GST_PAD_PROBE_TYPE_BUFFER,
                           (GstPadProbeCallback)cb_have_video, ri, NULL);
@@ -179,8 +182,7 @@ static void on_options(GstRTSPClient *client, GstRTSPContext *ctx, gpointer data
 	ri = get_relay_instance(relay, pathv[1]);
 	if (!ri) {
 		printf("creating factories: %s\n", pathv[1]);
-		ri = malloc(sizeof(*ri));
-		memset(ri, 0, sizeof(*ri));
+		ri = new RelayInstance;
 		ri->relay = relay;
 		ri->path = strdup(pathv[1]);
 		ri->started = time(NULL);
@@ -210,6 +212,16 @@ static void on_options(GstRTSPClient *client, GstRTSPContext *ctx, gpointer data
 	ri->ref_count++;
 	g_strfreev(pathv);
 	g_signal_connect(client, "closed", (GCallback)on_client_closed, ri);
+
+//	GstObject *parent, *topparent;
+//	parent = GST_OBJECT(element);
+//	while ( parent != NULL ) {
+//		std::cout << parent->name << ": " << GST_BIN(parent)->numchildren << " children" << std::endl;
+//		topparent = parent;
+//		parent = gst_object_get_parent(topparent);
+//	}
+
+//	GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(relay->server),GST_DEBUG_GRAPH_SHOW_ALL,"rtsprelay");
 }
 
 static void on_client_connect(GstRTSPServer *server, GstRTSPClient *client, gpointer data)
@@ -218,8 +230,10 @@ static void on_client_connect(GstRTSPServer *server, GstRTSPClient *client, gpoi
 	g_signal_connect(client, "options-request", (GCallback)on_options, data);
 }
 
-static gboolean factory_equal(gconstpointer v1, gconstpointer v2)
+static gboolean factory_equal(gconstpointer _v1, gconstpointer _v2)
 {
+	const char* v1 = (const char*) _v1;
+	const char* v2 = (const char*) _v2;
 	size_t l1 = strlen(v1);
 	size_t l2 = strlen(v2);
 	return strncmp(v1, v2, l1 ? l1 < l2 : l2) == 0;
@@ -227,7 +241,7 @@ static gboolean factory_equal(gconstpointer v1, gconstpointer v2)
 
 gboolean exit_handler(gpointer data)
 {
-	GMainLoop *loop = data;
+	GMainLoop *loop = (GMainLoop*) data;
 	if (g_main_loop_is_running(loop)) {
 		printf("received signal - quitting event loop\n");
 		g_main_loop_quit(loop);
@@ -258,7 +272,7 @@ int main(int argc, char **argv)
 	g_option_context_free(optctx);
 
 	loop = g_main_loop_new(NULL, FALSE);
-	relay = malloc(sizeof(*relay));
+	relay = new Relay;
 	relay->factories = g_hash_table_new_full(g_str_hash, factory_equal,
                                                  NULL, relay_instance_free);
 
@@ -283,7 +297,7 @@ int main(int argc, char **argv)
 
 	g_hash_table_unref(relay->factories);
 	g_object_unref(relay->server);
-	free(relay);
+	delete relay;
 
 	return 0;
 }

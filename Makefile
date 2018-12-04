@@ -1,7 +1,7 @@
 BLDDIR = build
 TARGET = rtsprelay
 
-CFLAGS = -g -O1 --std=c99 -D_XOPEN_SOURCE=600
+CFLAGS = -g -O1 --std=c++11 -D_XOPEN_SOURCE=600
 CFLAGS += -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers
 LIBS =
 
@@ -13,9 +13,9 @@ LDFLAGS += $(shell pkg-config --libs ${PKGS})
 
 all: $(BLDDIR)/$(TARGET)
 
-$(BLDDIR)/$(TARGET): rtsprelay.c
+$(BLDDIR)/$(TARGET): rtsprelay.cpp
 	@mkdir -p $(dir $@)
-	$(CC) -o $@ $^ $(CFLAGS) $(LDFLAGS) $(LIBS)
+	g++ -o $@ $^ $(CFLAGS) $(LDFLAGS) $(LIBS)
 
 clean:
 	rm -rf $(BLDDIR) || true
